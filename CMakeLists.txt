@@ -14,6 +14,9 @@ target_include_directories(raptordsp-broadcast PUBLIC
 
 target_link_libraries(raptordsp-broadcast raptordsp)
 
+# Add benchmarking
+add_subdirectory (benchmark)
+
 # Set up install
 set(installhelper_version 0.1.0)
 set(installhelper_name raptordsp-broadcast)
