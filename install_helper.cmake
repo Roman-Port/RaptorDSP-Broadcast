@@ -19,7 +19,7 @@ install(TARGETS ${installhelper_name} EXPORT ${installhelper_name}Targets
   INCLUDES DESTINATION include
 )
 install(
-  DIRECTORY ${CMAKE_SOURCE_DIR}/include/${installhelper_name}
+  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
   DESTINATION
     include
   COMPONENT
