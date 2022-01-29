@@ -115,7 +115,7 @@ bool raptor_rds_sync::process(unsigned char input, rds_frame_t* result) {
 				}
 				if (group_good_blocks_counter == 5) {
 					//Have a full group! Pack into frame
-					unsigned char* bytes = (unsigned char*)result->payload;
+					unsigned char* bytes = (unsigned char*)&result->payload;
 					bytes[7] = (group[0] >> 8U) & 0xffU;
 					bytes[6] = (group[0]) & 0xffU;
 					bytes[5] = (group[1] >> 8U) & 0xffU;
