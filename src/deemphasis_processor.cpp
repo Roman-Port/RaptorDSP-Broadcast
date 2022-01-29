@@ -1,5 +1,6 @@
 #include <raptordsp/broadcast/deemphasis_processor.h>
 #include <cmath>
+#include <cstring>
 
 raptor_deemphasis_processor::raptor_deemphasis_processor() :
     alpha(0),
@@ -16,9 +17,16 @@ void raptor_deemphasis_processor::configure(float sampleRate, float deemphasisTi
 }
 
 void raptor_deemphasis_processor::process(const float* input, float* output, int count) {
-    for (int i = 0; i < count; i++)
-    {
-        state += alpha * (input[i] - state);
-        output[i] = state;
+    if (alpha == 0) {
+        //Disabled. Simply copy
+        memcpy(output, input, sizeof(float) * count);
+    }
+    else {
+        //Apply
+        for (int i = 0; i < count; i++)
+        {
+            state += alpha * (input[i] - state);
+            output[i] = state;
+        }
     }
 }
