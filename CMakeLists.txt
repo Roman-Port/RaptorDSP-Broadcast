@@ -1,5 +1,6 @@
 ﻿cmake_minimum_required (VERSION 3.8)
 project ("raptordsp-broadcast")
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 find_package (Volk CONFIG REQUIRED)
 find_package (RaptorDSP CONFIG REQUIRED)
