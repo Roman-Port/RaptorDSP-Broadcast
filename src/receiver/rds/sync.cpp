@@ -1,4 +1,4 @@
-#include <raptordsp/broadcast/rds_sync.h>
+#include "sync.h"
 
 // much of this file is borrowed from https://github.com/bastibl/gr-rds/blob/maint-3.9/lib/decoder_impl.cc
 
@@ -7,8 +7,17 @@ static const unsigned int offset_word[5] = { 252,408,360,436,848 };
 static const unsigned int syndrome[5] = { 383,14,303,663,748 };
 static const char* const offset_name[] = { "A","B","C","D","C'" };
 
-raptor_rds_sync::raptor_rds_sync() {
+rds_sync::rds_sync() : 
+	cb_frame(0),
+	cb_frame_ctx(0),
+	cb_status(0),
+	cb_status_ctx(0)
+{
 	reset();
+}
+
+rds_sync::~rds_sync() {
+
 }
 
 unsigned int calc_syndrome(unsigned long message, unsigned char mlen) {
@@ -28,17 +37,17 @@ unsigned int calc_syndrome(unsigned long message, unsigned char mlen) {
 	return (reg & ((1 << plen) - 1));	// select the bottom plen bits of reg
 }
 
-bool raptor_rds_sync::process(unsigned char input, rds_frame_t* result) {
-	bool success = false;
+void rds_sync::push(unsigned char bit) {
 	unsigned long bit_distance, block_distance;
 	unsigned int block_calculated_crc, block_received_crc, checkword, dataword;
 	unsigned int reg_syndrome;
 	unsigned char offset_char('x');  // x = error while decoding the word offset
 
-	/* the synchronization process is described in Annex C, page 66 of the standard */
-	reg = (reg << 1) | input;		// reg contains the last 26 rds bits
-	switch (d_state) {
-	case NO_SYNC:
+	//Push bit
+	reg = (reg << 1) | bit;
+
+	//Handle
+	if (!has_sync) {
 		reg_syndrome = calc_syndrome(reg, 26);
 		for (int j = 0; j < 5; j++) {
 			if (reg_syndrome == syndrome[j]) {
@@ -60,8 +69,8 @@ bool raptor_rds_sync::process(unsigned char input, rds_frame_t* result) {
 				break; //syndrome found, no more cycles
 			}
 		}
-		break;
-	case SYNC:
+	}
+	else {
 		/* wait until 26 bits enter the buffer */
 		if (block_bit_counter < 25) block_bit_counter++;
 		else {
@@ -114,25 +123,8 @@ bool raptor_rds_sync::process(unsigned char input, rds_frame_t* result) {
 					group_good_blocks_counter++;
 				}
 				if (group_good_blocks_counter == 5) {
-					//Have a full group! Pack into frame
-					unsigned char* bytes = (unsigned char*)&result->payload;
-					bytes[7] = (group[0] >> 8U) & 0xffU;
-					bytes[6] = (group[0]) & 0xffU;
-					bytes[5] = (group[1] >> 8U) & 0xffU;
-					bytes[4] = (group[1]) & 0xffU;
-					bytes[3] = (group[2] >> 8U) & 0xffU;
-					bytes[2] = (group[2]) & 0xffU;
-					bytes[1] = (group[3] >> 8U) & 0xffU;
-					bytes[0] = (group[3]) & 0xffU;
-
-					//Transfer offset words
-					result->offsets[0] = offset_chars[0];
-					result->offsets[1] = offset_chars[1];
-					result->offsets[2] = offset_chars[2];
-					result->offsets[3] = offset_chars[3];
-
-					//Set state
-					success = true;
+					//Full frame!
+					push_frame();
 				}
 			}
 			block_bit_counter = 0;
@@ -146,29 +138,57 @@ bool raptor_rds_sync::process(unsigned char input, rds_frame_t* result) {
 				wrong_blocks_counter = 0;
 			}
 		}
-		break;
-	default:
-		d_state = NO_SYNC;
-		break;
 	}
 	bit_counter++;
-	return success;
 }
 
-void raptor_rds_sync::enter_sync(unsigned int sync_block_number) {
+void rds_sync::enter_sync(unsigned int sync_block_number) {
 	wrong_blocks_counter = 0;
 	blocks_counter = 0;
 	block_bit_counter = 0;
 	block_number = (sync_block_number + 1) % 4;
 	group_assembly_started = false;
-	d_state = SYNC;
+	has_sync = true;
+	notify_sync_changed();
 }
 
-void raptor_rds_sync::exit_sync() {
+void rds_sync::exit_sync() {
 	reset();
 }
 
-void raptor_rds_sync::reset() {
+void rds_sync::reset() {
 	presync = false;
-	d_state = NO_SYNC;
+	has_sync = false;
+	notify_sync_changed();
+}
+
+void rds_sync::notify_sync_changed() {
+	if (cb_status != 0) {
+		cb_status(cb_status_ctx, has_sync);
+	}
+}
+
+void rds_sync::push_frame() {
+	//Pack into frame
+	raptorbroadcast_rds_frame_t result;
+	unsigned char* bytes = (unsigned char*)&result.payload;
+	bytes[7] = (group[0] >> 8U) & 0xffU;
+	bytes[6] = (group[0]) & 0xffU;
+	bytes[5] = (group[1] >> 8U) & 0xffU;
+	bytes[4] = (group[1]) & 0xffU;
+	bytes[3] = (group[2] >> 8U) & 0xffU;
+	bytes[2] = (group[2]) & 0xffU;
+	bytes[1] = (group[3] >> 8U) & 0xffU;
+	bytes[0] = (group[3]) & 0xffU;
+
+	//Transfer offset words
+	result.offsets[0] = offset_chars[0];
+	result.offsets[1] = offset_chars[1];
+	result.offsets[2] = offset_chars[2];
+	result.offsets[3] = offset_chars[3];
+
+	//Send event
+	if (cb_frame != 0) {
+		cb_frame(cb_frame_ctx, result);
+	}
 }
